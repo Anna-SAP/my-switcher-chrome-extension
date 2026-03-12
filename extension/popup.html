@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Switcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="title-row">
+      <h2>My Switcher</h2>
+      <button id="theme-toggle" class="icon-btn" aria-label="Toggle dark mode">
+        <svg id="theme-icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="account-row">
+      <select id="account-select">
+        <option value="0">Account 1 (Default)</option>
+        <option value="1">Account 2</option>
+        <option value="2">Account 3</option>
+        <option value="3">Account 4</option>
+        <option value="4">Account 5</option>
+      </select>
+      <button id="add-account-btn" class="icon-btn primary-btn" aria-label="Add Google Account">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="main-grid" id="app-grid">
+    <!-- Apps will be injected here by JS -->
+  </div>
+
+  <div class="footer">
+    <button id="add-custom-app-btn" class="text-btn">
+      + Add custom app
+    </button>
+    <div id="custom-app-form" class="hidden">
+      <input type="text" id="custom-app-name" placeholder="App Name (e.g. Colab)">
+      <input type="url" id="custom-app-url" placeholder="URL (e.g. https://colab.research.google.com)">
+      <div class="form-actions">
+        <button id="save-custom-app" class="primary-btn">Save</button>
+        <button id="cancel-custom-app" class="text-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
