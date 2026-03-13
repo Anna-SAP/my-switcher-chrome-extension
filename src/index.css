@@ -130,11 +130,23 @@ button {
   gap: 8px;
 }
 
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .quick-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+.account-summary {
+  margin: 6px 2px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .account-select,
@@ -182,6 +194,11 @@ button {
   color: var(--text-secondary);
   background: var(--surface-strong);
   border: 1px solid var(--border);
+}
+
+.icon-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .icon-button:hover,
@@ -305,6 +322,26 @@ button {
   gap: 5px;
 }
 
+.sync-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 78px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.sync-button:hover {
+  background: var(--surface-muted);
+}
+
+.sync-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .form-panel {
   display: flex;
   flex-direction: column;
@@ -344,6 +381,20 @@ button {
 
 .hint {
   color: var(--text-muted);
+}
+
+.spinning-icon {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .visually-hidden {

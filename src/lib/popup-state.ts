@@ -1,9 +1,11 @@
 import {DEFAULT_POPUP_STATE, type AppEntry, type PopupState} from '@/types/extension';
+import {sanitizeGoogleAccountProfiles} from '@/lib/google-accounts';
 import {normalizeCustomUrl} from '@/lib/url';
 import {browserApi} from '@/lib/webextension';
 
 const localStorageKey = 'my-switcher-popup-state';
 const syncKeys = ['accountIndex', 'accountCount', 'customApps', 'theme'];
+const localKeys = ['accountProfiles', 'accountsLastLoadedAt'];
 
 function parseAccountCount(value: unknown): number {
   const parsed = Number(value);
@@ -55,12 +57,20 @@ export function sanitizeCustomApps(value: unknown): AppEntry[] {
 }
 
 function sanitizePopupState(rawState: Record<string, unknown>): PopupState {
-  const accountCount = parseAccountCount(rawState.accountCount);
+  const accountProfiles = sanitizeGoogleAccountProfiles(rawState.accountProfiles);
+  const accountCount = Math.max(parseAccountCount(rawState.accountCount), accountProfiles.length, 1);
+  const accountsLastLoadedAt =
+    typeof rawState.accountsLastLoadedAt === 'string' &&
+    !Number.isNaN(Date.parse(rawState.accountsLastLoadedAt))
+      ? new Date(rawState.accountsLastLoadedAt).toISOString()
+      : null;
 
   return {
     accountIndex: parseAccountIndex(rawState.accountIndex, accountCount),
     accountCount,
     customApps: sanitizeCustomApps(rawState.customApps),
+    accountProfiles,
+    accountsLastLoadedAt,
     theme: rawState.theme === 'dark' ? 'dark' : 'light',
   };
 }
@@ -91,8 +101,14 @@ function writeLocalState(patch: Partial<PopupState>) {
 export async function loadPopupState(): Promise<PopupState> {
   if (browserApi) {
     try {
-      const syncedState = await browserApi.storage.sync.get(syncKeys);
-      return sanitizePopupState(syncedState);
+      const [syncedState, localState] = await Promise.all([
+        browserApi.storage.sync.get(syncKeys),
+        browserApi.storage.local.get(localKeys),
+      ]);
+      return sanitizePopupState({
+        ...syncedState,
+        ...localState,
+      });
     } catch (error) {
       console.error('Extension sync storage read failed, falling back to local popup state.', error);
     }
@@ -102,9 +118,23 @@ export async function loadPopupState(): Promise<PopupState> {
 }
 
 export async function savePopupState(patch: Partial<PopupState>): Promise<void> {
+  const syncPatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => syncKeys.includes(key)),
+  );
+  const localPatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => localKeys.includes(key)),
+  );
+
   if (browserApi) {
     try {
-      await browserApi.storage.sync.set(patch);
+      if (Object.keys(syncPatch).length > 0) {
+        await browserApi.storage.sync.set(syncPatch);
+      }
+
+      if (Object.keys(localPatch).length > 0) {
+        await browserApi.storage.local.set(localPatch);
+      }
+
       return;
     } catch (error) {
       console.error('Extension sync storage write failed, using local storage.', error);

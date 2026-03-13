@@ -12,8 +12,16 @@
       "48": "icon-48.png"
     }
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "permissions": [
-    "storage"
+    "storage",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://accounts.google.com/*"
   ],
   "icons": {
     "16": "icon-16.png",

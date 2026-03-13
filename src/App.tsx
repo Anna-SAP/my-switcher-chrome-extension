@@ -1,5 +1,13 @@
 import {type ChangeEvent, type MouseEvent, useEffect, useRef, useState} from 'react';
-import {Download, Moon, Plus, Sun, Upload} from 'lucide-react';
+import {
+  Download,
+  LoaderCircle,
+  Moon,
+  Plus,
+  RefreshCw,
+  Sun,
+  Upload,
+} from 'lucide-react';
 import {
   createCustomAppsBackup,
   createCustomAppsBackupFileName,
@@ -7,6 +15,13 @@ import {
   parseCustomAppsBackup,
 } from '@/lib/custom-app-backup';
 import {aiApps, generalApps} from '@/data/apps';
+import {
+  ensureGoogleAccountsPermission,
+  formatAccountsLastLoadedAt,
+  formatGoogleAccountOptionLabel,
+  getGoogleAccountProfile,
+  requestGoogleAccountsSync,
+} from '@/lib/google-accounts';
 import {loadPopupState, openAppTab, savePopupState} from '@/lib/popup-state';
 import {buildAuthUrl, normalizeCustomUrl} from '@/lib/url';
 import {DEFAULT_POPUP_STATE, type AppEntry, type PopupState} from '@/types/extension';
@@ -77,6 +92,7 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState('');
   const [statusVariant, setStatusVariant] = useState<'default' | 'success' | 'error'>('default');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncingAccounts, setIsSyncingAccounts] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,6 +125,21 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = popupState.theme;
   }, [popupState.theme]);
+
+  useEffect(() => {
+    if (!statusMessage || statusVariant !== 'success') {
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setStatusMessage('');
+      setStatusVariant('default');
+    }, 3500);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [statusMessage, statusVariant]);
 
   async function persistState(
     patch: Partial<PopupState>,
@@ -173,6 +204,63 @@ export default function App() {
       accountCount: nextAccountCount,
       accountIndex: nextAccountIndex,
     });
+  }
+
+  async function handleSyncAccounts() {
+    if (isSyncingAccounts) {
+      return;
+    }
+
+    setIsSyncingAccounts(true);
+    setStatusMessage('Syncing Google accounts...');
+    setStatusVariant('default');
+
+    try {
+      const hasPermission = await ensureGoogleAccountsPermission();
+      if (!hasPermission) {
+        setStatusMessage('Grant Google Accounts access to load signed-in account names.');
+        setStatusVariant('error');
+        return;
+      }
+
+      const accountProfiles = await requestGoogleAccountsSync();
+      const accountCount = Math.max(accountProfiles.length, 1);
+      const accountIndex = Math.min(popupState.accountIndex, accountCount - 1);
+      const accountsLastLoadedAt = new Date().toISOString();
+      const nextStatePatch: Partial<PopupState> = {
+        accountProfiles,
+        accountCount,
+        accountIndex,
+        accountsLastLoadedAt,
+      };
+
+      const isPersisted = await persistState(nextStatePatch, {
+        preserveStatusMessage: true,
+      });
+      if (!isPersisted) {
+        return;
+      }
+
+      setPopupState((currentState) => ({
+        ...currentState,
+        accountProfiles,
+        accountCount,
+        accountIndex,
+        accountsLastLoadedAt,
+      }));
+      setStatusMessage(
+        `Synced ${accountProfiles.length} Google account${accountProfiles.length === 1 ? '' : 's'}.`,
+      );
+      setStatusVariant('success');
+    } catch (error) {
+      console.error('Failed to sync Google accounts.', error);
+      setStatusMessage(
+        error instanceof Error ? error.message : 'Failed to sync Google accounts.',
+      );
+      setStatusVariant('error');
+    } finally {
+      setIsSyncingAccounts(false);
+    }
   }
 
   async function handleThemeToggle() {
@@ -320,6 +408,27 @@ export default function App() {
   }
 
   const isDarkMode = popupState.theme === 'dark';
+  const hasLoadedAccounts = popupState.accountProfiles.length > 0;
+  const syncButtonLabel = isSyncingAccounts
+    ? 'Loading'
+    : hasLoadedAccounts
+      ? 'Refresh'
+      : 'Load';
+  const syncButtonTitle = hasLoadedAccounts
+    ? 'Refresh signed-in Google account names and emails.'
+    : 'Load signed-in Google account names and emails.';
+  const selectedAccountProfile = getGoogleAccountProfile(
+    popupState.accountIndex,
+    popupState.accountProfiles,
+  );
+  const accountsLastLoadedLabel = formatAccountsLastLoadedAt(popupState.accountsLastLoadedAt);
+  const accountSummary = selectedAccountProfile
+    ? [selectedAccountProfile.email, accountsLastLoadedLabel ? `Synced ${accountsLastLoadedLabel}` : null]
+        .filter(Boolean)
+        .join(' | ')
+    : popupState.accountsLastLoadedAt
+      ? `Synced ${accountsLastLoadedLabel ?? 'recently'}. Load again to refresh account labels.`
+      : 'Load Google account names and emails from your signed-in browser session.';
 
   return (
     <main className="popup-shell">
@@ -352,23 +461,48 @@ export default function App() {
             value={popupState.accountIndex}
             onChange={(event) => void handleAccountChange(event)}
             aria-label="Select Google account slot"
+            title={
+              selectedAccountProfile
+                ? `${selectedAccountProfile.displayName} <${selectedAccountProfile.email}>`
+                : undefined
+            }
           >
             {Array.from({length: popupState.accountCount}, (_value, index) => (
               <option key={index} value={index}>
-                {index === 0 ? 'Account 0 (Default u/0)' : `Account ${index} (u/${index})`}
+                {formatGoogleAccountOptionLabel(index, popupState.accountProfiles)}
               </option>
             ))}
           </select>
 
-          <button
-            type="button"
-            className="icon-button primary-button"
-            aria-label="Add account slot"
-            onClick={() => void handleAddAccount()}
-          >
-            <Plus size={18} />
-          </button>
+          <div className="account-actions">
+            <button
+              type="button"
+              className="action-button sync-button"
+              aria-label={isSyncingAccounts ? 'Syncing Google accounts' : 'Load signed-in Google accounts'}
+              title={syncButtonTitle}
+              onClick={() => void handleSyncAccounts()}
+              disabled={isSyncingAccounts}
+            >
+              {isSyncingAccounts ? (
+                <LoaderCircle size={16} className="spinning-icon" />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+              {syncButtonLabel}
+            </button>
+
+            <button
+              type="button"
+              className="icon-button primary-button"
+              aria-label="Add account slot"
+              onClick={() => void handleAddAccount()}
+            >
+              <Plus size={18} />
+            </button>
+          </div>
         </div>
+
+        <p className="account-summary">{accountSummary}</p>
 
         <div className="quick-actions">
           <button
