@@ -1,20 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# My Switcher Firefox Extension
 
-# Run and deploy your AI Studio app
+Firefox-first WebExtension source for switching Google services with account-aware URLs.
 
-This contains everything you need to run your app locally.
+## Project Structure
 
-View your app in AI Studio: https://ai.studio/apps/6bc4e1d5-7d18-4598-b9ea-e0f9bc7638b3
+- `extension/manifest.json`: Firefox MV3 manifest source.
+- `popup.html`: popup entry consumed by Vite.
+- `src/App.tsx`: popup UI and extension interaction logic.
+- `src/lib/webextension.ts`: `browser.*` adapter with callback-to-promise fallback for `chrome.*`.
+- `src/lib/popup-state.ts`: sync storage and local preview storage abstraction.
+- `scripts/package-firefox.mjs`: manual `.xpi` packager.
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
+## Local Preview
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Start the popup preview:
    `npm run dev`
+
+The dev server uses local storage when it is not running inside Firefox.
+
+## Build Firefox Sources
+
+Generate the distributable Firefox extension directory:
+
+```bash
+npm run build:firefox
+```
+
+Output: `dist/firefox/`
+
+## Package a `.xpi`
+
+Manual packaging through the built-in script:
+
+```bash
+npm run package:firefox
+```
+
+Output: `artifacts/my-switcher-firefox.xpi`
+
+Alternative using `web-ext`:
+
+```bash
+npm install --save-dev web-ext
+npx web-ext build --source-dir dist/firefox --artifacts-dir artifacts/web-ext
+```
+
+Before submitting to AMO, update `browser_specific_settings.gecko.id` in `extension/manifest.json` to your own stable extension ID.

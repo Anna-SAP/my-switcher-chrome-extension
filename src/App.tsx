@@ -1,277 +1,343 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import {type ChangeEvent, type MouseEvent, useEffect, useState} from 'react';
+import {Moon, Plus, Sun} from 'lucide-react';
+import {aiApps, generalApps} from '@/data/apps';
+import {loadPopupState, openAppTab, savePopupState} from '@/lib/popup-state';
+import {buildAuthUrl, normalizeCustomUrl} from '@/lib/url';
+import {DEFAULT_POPUP_STATE, type AppEntry, type PopupState} from '@/types/extension';
 
-import { useState, useEffect } from 'react';
-import { Moon, Sun, Plus, Download } from 'lucide-react';
-import JSZip from 'jszip';
+const customColors = ['#ea4335', '#34a853', '#fbbc05', '#4285f4', '#ff6d00', '#00bfa5'];
 
-const aiApps = [
-  { name: 'AI Studio', url: 'https://aistudio.google.com', iconLetter: 'A' },
-  { name: 'Gemini', url: 'https://gemini.google.com', iconLetter: 'G' },
-  { name: 'Studio Apps', url: 'https://aistudio.google.com/apps', iconLetter: 'S' },
-  { name: 'NotebookLM', url: 'https://notebooklm.google.com', iconLetter: 'N' }
-];
+function AppSection({
+  title,
+  apps,
+  onAppOpen,
+  onCustomAppDelete,
+}: {
+  title: string;
+  apps: AppEntry[];
+  onAppOpen: (app: AppEntry) => void;
+  onCustomAppDelete?: (event: MouseEvent<HTMLButtonElement>, index: number) => void;
+}) {
+  return (
+    <section className="app-section">
+      <div className="section-heading">{title}</div>
+      <div className="app-grid">
+        {apps.map((app, index) => {
+          const colorIndex = app.name.charCodeAt(0) % customColors.length;
+          const color = customColors[colorIndex];
 
-const generalApps = [
-  { name: 'Gmail', url: 'https://mail.google.com', iconLetter: 'G' },
-  { name: 'Drive', url: 'https://drive.google.com', iconLetter: 'D' },
-  { name: 'Docs', url: 'https://docs.google.com', iconLetter: 'D' },
-  { name: 'Sheets', url: 'https://docs.google.com/spreadsheets', iconLetter: 'S' },
-  { name: 'Meet', url: 'https://meet.google.com', iconLetter: 'M' },
-  { name: 'Calendar', url: 'https://calendar.google.com', iconLetter: 'C' },
-  { name: 'Slides', url: 'https://docs.google.com/presentation', iconLetter: 'S' },
-  { name: 'Sites', url: 'https://sites.google.com', iconLetter: 'S' },
-  { name: 'Forms', url: 'https://docs.google.com/forms', iconLetter: 'F' },
-  { name: 'YouTube', url: 'https://www.youtube.com', iconLetter: 'Y' },
-  { name: 'Translate', url: 'https://translate.google.com', iconLetter: 'T' },
-  { name: 'Tasks', url: 'https://tasksboard.com', iconLetter: 'T' },
-  { name: 'Photos', url: 'https://photos.google.com', iconLetter: 'P' },
-  { name: 'Keep', url: 'https://keep.google.com', iconLetter: 'K' }
-];
-
-const colors = ['#ea4335', '#34a853', '#fbbc05', '#4285f4', '#ff6d00', '#00bfa5'];
+          return (
+            <button
+              key={`${title}-${app.name}-${index}`}
+              type="button"
+              className="app-card"
+              data-custom={app.isCustom ? 'true' : 'false'}
+              title={app.isCustom ? `${app.name} - Right-click to remove` : app.name}
+              onClick={() => onAppOpen(app)}
+              onContextMenu={
+                app.isCustom && onCustomAppDelete
+                  ? (event) => onCustomAppDelete(event, index)
+                  : undefined
+              }
+            >
+              <span
+                className="app-icon"
+                style={
+                  app.isCustom
+                    ? {
+                        backgroundColor: `${color}22`,
+                        color,
+                      }
+                    : undefined
+                }
+              >
+                {app.iconLetter}
+              </span>
+              <span className="app-name">{app.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 export default function App() {
-  const [accountIndex, setAccountIndex] = useState('0');
-  const [accountCount, setAccountCount] = useState(5);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [customApps, setCustomApps] = useState<{name: string, url: string, iconLetter: string, isCustom: boolean}[]>([]);
+  const [popupState, setPopupState] = useState<PopupState>(DEFAULT_POPUP_STATE);
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customUrl, setCustomUrl] = useState('');
-  const [isZipping, setIsZipping] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleAppClick = (baseUrl: string) => {
-    try {
-      const urlObj = new URL(baseUrl);
-      urlObj.searchParams.set('authuser', accountIndex);
-      window.open(urlObj.toString(), '_blank');
-    } catch (e) {
-      window.open(baseUrl, '_blank');
-    }
-  };
+  useEffect(() => {
+    let isCancelled = false;
 
-  const handleAddCustomApp = () => {
-    if (customName && customUrl) {
-      let url = customUrl.trim();
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-      }
-      setCustomApps([...customApps, {
-        name: customName.trim(),
-        url,
-        iconLetter: customName.trim().charAt(0).toUpperCase(),
-        isCustom: true
-      }]);
-      setCustomName('');
-      setCustomUrl('');
-      setShowCustomForm(false);
-    }
-  };
-
-  const handleDeleteCustomApp = (e: React.MouseEvent, index: number) => {
-    e.preventDefault();
-    if (window.confirm(`Delete custom app "${customApps[index].name}"?`)) {
-      const newApps = [...customApps];
-      newApps.splice(index, 1);
-      setCustomApps(newApps);
-    }
-  };
-
-  const handleDownloadZip = async () => {
-    setIsZipping(true);
-    try {
-      const zip = new JSZip();
-      const files = ['manifest.json', 'popup.html', 'styles.css', 'popup.js', 'icon-16.png', 'icon-48.png', 'icon-128.png'];
-
-      for (const file of files) {
-        const response = await fetch(`/extension/${file}`);
-        if (response.ok) {
-          if (file.endsWith('.png')) {
-            const blob = await response.blob();
-            zip.file(file, blob);
-          } else {
-            const content = await response.text();
-            zip.file(file, content);
-          }
+    void loadPopupState()
+      .then((savedState) => {
+        if (!isCancelled) {
+          setPopupState(savedState);
         }
-      }
+      })
+      .catch((error) => {
+        console.error('Failed to load popup state.', error);
+        if (!isCancelled) {
+          setStatusMessage('Firefox storage is unavailable. Preview state will stay local.');
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
 
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'my-switcher-extension.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = popupState.theme;
+  }, [popupState.theme]);
+
+  async function persistState(patch: Partial<PopupState>) {
+    try {
+      await savePopupState(patch);
+      setStatusMessage('');
     } catch (error) {
-      console.error('Failed to generate zip', error);
-      alert('Failed to generate ZIP file.');
-    } finally {
-      setIsZipping(false);
+      console.error('Failed to persist popup state.', error);
+      setStatusMessage('Failed to sync popup settings to Firefox storage.');
     }
-  };
+  }
 
-  const renderAppGrid = (apps: any[], isCustomSection = false) => (
-    <div className="grid grid-cols-3 gap-3 p-4 pt-2">
-      {apps.map((app, idx) => {
-        const isCustom = app.isCustom;
-        const colorIndex = app.name.charCodeAt(0) % colors.length;
-        const customColor = colors[colorIndex];
+  function closeCustomForm() {
+    setShowCustomForm(false);
+    setCustomName('');
+    setCustomUrl('');
+    setFormError('');
+  }
 
-        return (
-          <button
-            key={idx}
-            onClick={() => handleAppClick(app.url)}
-            onContextMenu={(e) => isCustom ? handleDeleteCustomApp(e, idx) : undefined}
-            className="flex flex-col items-center justify-center p-3 bg-white dark:bg-[#2d2e30] border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 hover:-translate-y-0.5 hover:shadow-md transition-all group"
-          >
-            <div 
-              className="w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold mb-2"
-              style={{
-                backgroundColor: isCustom ? `${customColor}33` : (isDarkMode ? '#3c4043' : '#e8f0fe'),
-                color: isCustom ? customColor : (isDarkMode ? '#8ab4f8' : '#1a73e8')
-              }}
-            >
-              {app.iconLetter}
-            </div>
-            <div className="text-xs text-center w-full truncate text-gray-900 dark:text-gray-100">
-              {app.name}
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
+  async function handleOpenApp(app: AppEntry) {
+    const targetUrl = buildAuthUrl(app.url, popupState.accountIndex);
+
+    try {
+      await openAppTab(targetUrl);
+    } catch (error) {
+      console.error('Failed to open target tab.', error);
+      setStatusMessage('Firefox blocked the new tab request.');
+    }
+  }
+
+  async function handleAccountChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextAccountIndex = Number.parseInt(event.target.value, 10);
+
+    setPopupState((currentState) => ({
+      ...currentState,
+      accountIndex: nextAccountIndex,
+    }));
+
+    await persistState({accountIndex: nextAccountIndex});
+  }
+
+  async function handleAddAccount() {
+    const nextAccountCount = popupState.accountCount + 1;
+    const nextAccountIndex = nextAccountCount - 1;
+
+    setPopupState((currentState) => ({
+      ...currentState,
+      accountCount: nextAccountCount,
+      accountIndex: nextAccountIndex,
+    }));
+
+    await persistState({
+      accountCount: nextAccountCount,
+      accountIndex: nextAccountIndex,
+    });
+  }
+
+  async function handleThemeToggle() {
+    const nextTheme = popupState.theme === 'dark' ? 'light' : 'dark';
+
+    setPopupState((currentState) => ({
+      ...currentState,
+      theme: nextTheme,
+    }));
+
+    await persistState({theme: nextTheme});
+  }
+
+  async function handleSaveCustomApp() {
+    const trimmedName = customName.trim();
+    const normalizedUrl = normalizeCustomUrl(customUrl);
+
+    if (!trimmedName) {
+      setFormError('App name is required.');
+      return;
+    }
+
+    if (!normalizedUrl) {
+      setFormError('Use a valid http(s) URL.');
+      return;
+    }
+
+    const nextCustomApps = [
+      ...popupState.customApps,
+      {
+        name: trimmedName,
+        url: normalizedUrl,
+        iconLetter: trimmedName.charAt(0).toUpperCase(),
+        isCustom: true,
+      },
+    ];
+
+    setPopupState((currentState) => ({
+      ...currentState,
+      customApps: nextCustomApps,
+    }));
+
+    closeCustomForm();
+    await persistState({customApps: nextCustomApps});
+  }
+
+  async function handleDeleteCustomApp(
+    event: MouseEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    event.preventDefault();
+
+    const targetApp = popupState.customApps[index];
+    if (!targetApp) {
+      return;
+    }
+
+    if (!window.confirm(`Delete custom app "${targetApp.name}"?`)) {
+      return;
+    }
+
+    const nextCustomApps = popupState.customApps.filter(
+      (_app, currentIndex) => currentIndex !== index,
+    );
+
+    setPopupState((currentState) => ({
+      ...currentState,
+      customApps: nextCustomApps,
+    }));
+
+    await persistState({customApps: nextCustomApps});
+  }
+
+  const isDarkMode = popupState.theme === 'dark';
 
   return (
-    <div className={`min-h-screen flex items-center justify-center bg-gray-100 ${isDarkMode ? 'dark' : ''} py-8`}>
-      <div className="w-[320px] bg-white dark:bg-[#202124] rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700 transition-colors duration-300 max-h-[80vh] flex flex-col">
-        
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2d2e30] shrink-0">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="m-0 text-lg font-medium text-gray-900 dark:text-gray-100">My Switcher</h2>
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+    <main className="popup-shell">
+      <header className="popup-header">
+        <div className="header-row">
+          <div className="title-block">
+            <h1>My Switcher</h1>
+            <p>Switch Google services with Firefox account-aware tabs.</p>
           </div>
-          <div className="flex gap-2">
-            <select 
-              value={accountIndex}
-              onChange={(e) => setAccountIndex(e.target.value)}
-              className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-[#202124] text-gray-900 dark:text-gray-100 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
-            >
-              {Array.from({ length: accountCount }).map((_, i) => (
-                <option key={i} value={i}>
-                  {i === 0 ? 'Account 0 (Default u/0)' : `Account ${i} (u/${i})`}
-                </option>
-              ))}
-            </select>
-            <button 
-              onClick={() => {
-                setAccountCount(prev => prev + 1);
-                setAccountIndex(String(accountCount));
-              }}
-              className="flex items-center justify-center w-9 h-9 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              title="Add Account to List"
-            >
-              <Plus size={20} />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => void handleThemeToggle()}
+          >
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </div>
 
-        {/* Main Content (Scrollable) */}
-        <div className="overflow-y-auto flex-1 custom-scrollbar">
-          <div className="px-4 pt-4 pb-1">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">AI Apps</h3>
-          </div>
-          {renderAppGrid(aiApps)}
+        <div className="account-row">
+          <select
+            className="account-select"
+            value={popupState.accountIndex}
+            onChange={(event) => void handleAccountChange(event)}
+            aria-label="Select Google account slot"
+          >
+            {Array.from({length: popupState.accountCount}, (_value, index) => (
+              <option key={index} value={index}>
+                {index === 0 ? 'Account 0 (Default u/0)' : `Account ${index} (u/${index})`}
+              </option>
+            ))}
+          </select>
 
-          <div className="px-4 pt-2 pb-1">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">General</h3>
-          </div>
-          {renderAppGrid(generalApps)}
-
-          {customApps.length > 0 && (
-            <>
-              <div className="px-4 pt-2 pb-1">
-                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Custom</h3>
-              </div>
-              {renderAppGrid(customApps, true)}
-            </>
-          )}
+          <button
+            type="button"
+            className="icon-button primary-button"
+            aria-label="Add account slot"
+            onClick={() => void handleAddAccount()}
+          >
+            <Plus size={18} />
+          </button>
         </div>
+      </header>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2d2e30] flex flex-col items-center shrink-0">
-          {!showCustomForm ? (
-            <button 
-              onClick={() => setShowCustomForm(true)}
-              className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-md transition-colors"
-            >
-              + Add custom app
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2 w-full mt-2">
-              <input 
-                type="text" 
-                placeholder="App Name (e.g. Colab)" 
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-[#202124] text-gray-900 dark:text-gray-100 text-sm"
-              />
-              <input 
-                type="url" 
-                placeholder="URL (e.g. https://colab.research.google.com)" 
-                value={customUrl}
-                onChange={(e) => setCustomUrl(e.target.value)}
-                className="p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-[#202124] text-gray-900 dark:text-gray-100 text-sm"
-              />
-              <div className="flex gap-2 justify-end mt-1">
-                <button 
-                  onClick={() => setShowCustomForm(false)}
-                  className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleAddCustomApp}
-                  className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-                >
-                  Save
-                </button>
-              </div>
+      <div className="app-content">
+        {isLoading ? <div className="status-line">Loading saved Firefox settings...</div> : null}
+
+        <AppSection title="AI Apps" apps={aiApps} onAppOpen={(app) => void handleOpenApp(app)} />
+        <AppSection
+          title="General"
+          apps={generalApps}
+          onAppOpen={(app) => void handleOpenApp(app)}
+        />
+
+        {popupState.customApps.length > 0 ? (
+          <AppSection
+            title="Custom"
+            apps={popupState.customApps}
+            onAppOpen={(app) => void handleOpenApp(app)}
+            onCustomAppDelete={(event, index) => void handleDeleteCustomApp(event, index)}
+          />
+        ) : null}
+      </div>
+
+      <footer className="popup-footer">
+        {!showCustomForm ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setShowCustomForm(true)}
+          >
+            + Add custom app
+          </button>
+        ) : (
+          <div className="form-panel">
+            <input
+              type="text"
+              value={customName}
+              placeholder="App Name (e.g. Colab)"
+              onChange={(event) => setCustomName(event.target.value)}
+            />
+            <input
+              type="url"
+              value={customUrl}
+              placeholder="URL (e.g. https://colab.research.google.com)"
+              onChange={(event) => setCustomUrl(event.target.value)}
+            />
+
+            <div className="form-actions">
+              <button type="button" className="text-button" onClick={closeCustomForm}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button action-button"
+                onClick={() => void handleSaveCustomApp()}
+              >
+                Save
+              </button>
             </div>
-          )}
-        </div>
 
-      </div>
-      
-      <div className="fixed bottom-4 right-4 max-w-sm bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="font-bold text-gray-900 dark:text-white mb-2">Extension Files Ready!</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-          The actual Chrome extension files have been generated in the <code>/public/extension</code> folder.
+            {formError ? <p className="message error">{formError}</p> : null}
+          </div>
+        )}
+
+        <p className="hint">
+          Custom cards can be removed with a right-click. Only `storage` permission is requested.
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          This UI is a live React preview of how the extension popup will look and behave.
-        </p>
-        <button
-          onClick={handleDownloadZip}
-          disabled={isZipping}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-lg transition-colors font-medium text-sm"
-        >
-          <Download size={16} />
-          {isZipping ? 'Generating ZIP...' : 'Download Extension ZIP'}
-        </button>
-      </div>
-    </div>
+        {statusMessage ? <p className="message error">{statusMessage}</p> : null}
+      </footer>
+    </main>
   );
 }

@@ -1,43 +1,52 @@
-import { createCanvas } from 'canvas';
+import {createCanvas} from 'canvas';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import {fileURLToPath} from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const extensionDir = path.join(__dirname, 'public', 'extension');
+const sizes = [16, 32, 48, 96, 128];
+
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
 
 function generateIcon(size) {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
+  const radius = Math.max(3, Math.round(size * 0.19));
 
-  // Background
+  ctx.clearRect(0, 0, size, size);
+
+  drawRoundedRect(ctx, 0, 0, size, size, radius);
   ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath();
-  ctx.roundRect(0, 0, size, size, size * 0.2);
   ctx.fill();
 
-  // Neon glow effect
   ctx.shadowColor = '#00ffcc';
-  ctx.shadowBlur = size * 0.15;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-
-  // Text
+  ctx.shadowBlur = size * 0.08;
   ctx.fillStyle = '#00ffcc';
-  ctx.font = `bold ${size * 0.7}px "Arial", sans-serif`;
+  ctx.font = `normal ${Math.round(size * 0.78)}px Georgia`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  
-  // Draw text multiple times to intensify the glow
-  for (let i = 0; i < 3; i++) {
-    ctx.fillText('S', size / 2, size / 2 + size * 0.05);
-  }
+  ctx.fillText('S', size / 2, size / 2 + size * 0.03);
 
   return canvas.toBuffer('image/png');
 }
 
-fs.writeFileSync(path.join(__dirname, 'public', 'extension', 'icon-16.png'), generateIcon(16));
-fs.writeFileSync(path.join(__dirname, 'public', 'extension', 'icon-48.png'), generateIcon(48));
-fs.writeFileSync(path.join(__dirname, 'public', 'extension', 'icon-128.png'), generateIcon(128));
+for (const size of sizes) {
+  fs.writeFileSync(path.join(extensionDir, `icon-${size}.png`), generateIcon(size));
+}
 
-console.log('Icons generated successfully.');
+fs.writeFileSync(path.join(extensionDir, 'icon.png'), generateIcon(128));
+console.log('Generated Firefox PNG icons from the existing icon design.');
