@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "My Switcher",
   "version": "1.0.0",
-  "description": "Quickly switch between Google AI apps and Google services with multiple accounts in Chrome.",
+  "description": "Quickly switch between Google AI apps and Google services with multiple accounts in Firefox.",
   "action": {
     "default_title": "My Switcher",
     "default_popup": "popup.html",
@@ -21,5 +21,10 @@
     "48": "icon-48.png",
     "96": "icon-96.png",
     "128": "icon-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "my-switcher@example.com"
+    }
   }
 }

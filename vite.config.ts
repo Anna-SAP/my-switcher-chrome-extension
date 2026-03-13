@@ -4,11 +4,15 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 const extensionRoot = path.resolve(__dirname, 'public', 'extension');
-const manifestPath = path.resolve(__dirname, 'extension', 'manifest.json');
 
-function firefoxExtensionBundle() {
+function resolveTargetManifest(target: string) {
+  const manifestFileName = target === 'firefox' ? 'manifest.firefox.json' : 'manifest.json';
+  return path.resolve(__dirname, 'extension', manifestFileName);
+}
+
+function extensionBundle(manifestPath: string) {
   return {
-    name: 'firefox-extension-bundle',
+    name: 'extension-bundle',
     apply: 'build' as const,
     generateBundle() {
       const iconFiles = fs
@@ -32,26 +36,31 @@ function firefoxExtensionBundle() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), firefoxExtensionBundle()],
-  publicDir: false,
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
-  },
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    hmr: process.env.DISABLE_HMR !== 'true',
-  },
-  build: {
-    outDir: path.resolve(__dirname, 'dist', 'firefox'),
-    emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        popup: path.resolve(__dirname, 'popup.html'),
+export default defineConfig(() => {
+  const extensionTarget = process.env.EXTENSION_TARGET === 'firefox' ? 'firefox' : 'chrome';
+  const manifestPath = resolveTargetManifest(extensionTarget);
+
+  return {
+    plugins: [react(), extensionBundle(manifestPath)],
+    publicDir: false as const,
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
       },
     },
-  },
+    server: {
+      host: '0.0.0.0',
+      port: 3000,
+      hmr: process.env.DISABLE_HMR !== 'true',
+    },
+    build: {
+      outDir: path.resolve(__dirname, 'dist', extensionTarget),
+      emptyOutDir: true,
+      rollupOptions: {
+        input: {
+          popup: path.resolve(__dirname, 'popup.html'),
+        },
+      },
+    },
+  };
 });

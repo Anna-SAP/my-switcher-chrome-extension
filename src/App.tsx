@@ -3,6 +3,7 @@ import {Download, Moon, Plus, Sun, Upload} from 'lucide-react';
 import {
   createCustomAppsBackup,
   createCustomAppsBackupFileName,
+  downloadCustomAppsBackup,
   parseCustomAppsBackup,
 } from '@/lib/custom-app-backup';
 import {aiApps, generalApps} from '@/data/apps';
@@ -90,7 +91,7 @@ export default function App() {
       .catch((error) => {
         console.error('Failed to load popup state.', error);
         if (!isCancelled) {
-          setStatusMessage('Firefox storage is unavailable. Preview state will stay local.');
+          setStatusMessage('Extension sync storage is unavailable. Preview state will stay local.');
           setStatusVariant('error');
         }
       })
@@ -122,7 +123,7 @@ export default function App() {
       return true;
     } catch (error) {
       console.error('Failed to persist popup state.', error);
-      setStatusMessage('Failed to sync popup settings to Firefox storage.');
+      setStatusMessage('Failed to sync popup settings.');
       setStatusVariant('error');
       return false;
     }
@@ -142,7 +143,7 @@ export default function App() {
       await openAppTab(targetUrl);
     } catch (error) {
       console.error('Failed to open target tab.', error);
-      setStatusMessage('Firefox blocked the new tab request.');
+      setStatusMessage('The browser blocked the new tab request.');
       setStatusVariant('error');
     }
   }
@@ -218,25 +219,24 @@ export default function App() {
     await persistState({customApps: nextCustomApps});
   }
 
-  function handleExportCustomApps() {
-    const backupContent = createCustomAppsBackup(popupState.customApps);
-    const blob = new Blob([backupContent], {type: 'application/json'});
-    const downloadUrl = URL.createObjectURL(blob);
-    const downloadLink = document.createElement('a');
+  async function handleExportCustomApps() {
+    try {
+      const backupContent = createCustomAppsBackup(popupState.customApps);
+      await downloadCustomAppsBackup(createCustomAppsBackupFileName(), backupContent);
 
-    downloadLink.href = downloadUrl;
-    downloadLink.download = createCustomAppsBackupFileName();
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(downloadUrl);
-
-    setStatusMessage(
-      popupState.customApps.length > 0
-        ? `Exported ${popupState.customApps.length} custom apps.`
-        : 'Exported an empty custom app backup.',
-    );
-    setStatusVariant('success');
+      setStatusMessage(
+        popupState.customApps.length > 0
+          ? `Exported ${popupState.customApps.length} custom apps.`
+          : 'Exported an empty custom app backup.',
+      );
+      setStatusVariant('success');
+    } catch (error) {
+      console.error('Failed to export custom apps.', error);
+      setStatusMessage(
+        error instanceof Error ? error.message : 'Failed to export custom apps.',
+      );
+      setStatusVariant('error');
+    }
   }
 
   function handleImportTrigger() {
@@ -375,7 +375,7 @@ export default function App() {
             type="button"
             className="text-button utility-button"
             disabled={popupState.customApps.length === 0}
-            onClick={handleExportCustomApps}
+            onClick={() => void handleExportCustomApps()}
             title={
               popupState.customApps.length === 0
                 ? 'Add a custom app before exporting.'
@@ -444,7 +444,7 @@ export default function App() {
       </header>
 
       <div className="app-content">
-        {isLoading ? <div className="status-line">Loading saved Firefox settings...</div> : null}
+        {isLoading ? <div className="status-line">Loading saved settings...</div> : null}
 
         <AppSection title="AI Apps" apps={aiApps} onAppOpen={(app) => void handleOpenApp(app)} />
         <AppSection

@@ -1,5 +1,13 @@
 :root {
   color-scheme: light;
+  --popup-width: 552px;
+  --popup-header-padding-inline: 14px;
+  --popup-header-padding-top: 12px;
+  --popup-header-padding-bottom: 12px;
+  --section-padding-inline: 14px;
+  --compact-grid-gap: 8px;
+  --compact-card-height: 68px;
+  --compact-label-size: 10px;
   --page-background:
     radial-gradient(circle at top, rgba(26, 115, 232, 0.16), transparent 34%),
     linear-gradient(180deg, #f7f9fc 0%, #eef3fb 100%);
@@ -49,7 +57,7 @@ body {
 }
 
 body {
-  width: 560px;
+  width: var(--popup-width);
   min-height: 0;
   background: var(--page-background);
   color: var(--text-primary);
@@ -94,7 +102,10 @@ button {
 }
 
 .popup-header {
-  padding: 12px 14px 12px;
+  padding:
+    var(--popup-header-padding-top)
+    var(--popup-header-padding-inline)
+    var(--popup-header-padding-bottom);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
 }
@@ -197,9 +208,9 @@ button {
 
 .section-heading,
 .status-line {
-  padding: 8px 14px 2px;
+  padding: 8px var(--section-padding-inline) 2px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--compact-label-size);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -208,13 +219,13 @@ button {
 .app-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-  padding: 6px 14px 0;
+  gap: var(--compact-grid-gap);
+  padding: 6px var(--section-padding-inline) 0;
 }
 
 .app-card {
   display: flex;
-  min-height: 68px;
+  min-height: var(--compact-card-height);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -257,7 +268,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--compact-label-size);
   line-height: 1.15;
 }
 

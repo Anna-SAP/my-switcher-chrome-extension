@@ -1,13 +1,15 @@
 {
-  "name": "my-switcher-firefox-extension",
+  "name": "my-switcher-chrome-extension",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
-    "build:firefox": "vite build",
-    "package:firefox": "npm run build:firefox && node scripts/package-firefox.mjs",
+    "build": "npm run build:chrome",
+    "build:chrome": "node scripts/build-extension.mjs chrome",
+    "build:firefox": "node scripts/build-extension.mjs firefox",
+    "package:chrome": "npm run build:chrome && node scripts/package-extension.mjs chrome",
+    "package:firefox": "npm run build:firefox && node scripts/package-extension.mjs firefox",
     "preview": "vite preview",
     "clean": "node --input-type=module -e \"import {rmSync} from 'node:fs'; ['dist','artifacts'].forEach((dir) => rmSync(dir, {recursive: true, force: true}));\"",
     "lint": "tsc --noEmit"

@@ -94,7 +94,7 @@ export async function loadPopupState(): Promise<PopupState> {
       const syncedState = await browserApi.storage.sync.get(syncKeys);
       return sanitizePopupState(syncedState);
     } catch (error) {
-      console.error('Falling back to local popup state.', error);
+      console.error('Extension sync storage read failed, falling back to local popup state.', error);
     }
   }
 
@@ -107,7 +107,7 @@ export async function savePopupState(patch: Partial<PopupState>): Promise<void> 
       await browserApi.storage.sync.set(patch);
       return;
     } catch (error) {
-      console.error('Firefox sync storage write failed, using local storage.', error);
+      console.error('Extension sync storage write failed, using local storage.', error);
     }
   }
 
