@@ -1,18 +1,331 @@
-@import "tailwindcss";
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+:root {
+  color-scheme: light;
+  --page-background:
+    radial-gradient(circle at top, rgba(26, 115, 232, 0.16), transparent 34%),
+    linear-gradient(180deg, #f7f9fc 0%, #eef3fb 100%);
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --surface-hover: rgba(244, 247, 252, 0.98);
+  --surface-muted: rgba(26, 115, 232, 0.08);
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --border: rgba(148, 163, 184, 0.26);
+  --shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  --accent: #1a73e8;
+  --accent-hover: #1558b0;
+  --accent-foreground: #ffffff;
+  --danger: #c62828;
+  --icon-background: rgba(26, 115, 232, 0.12);
+  --icon-foreground: #1a73e8;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page-background:
+    radial-gradient(circle at top, rgba(138, 180, 248, 0.18), transparent 34%),
+    linear-gradient(180deg, #10151f 0%, #171d28 100%);
+  --surface: rgba(24, 31, 45, 0.9);
+  --surface-strong: rgba(29, 37, 53, 0.95);
+  --surface-hover: rgba(39, 48, 68, 0.98);
+  --surface-muted: rgba(138, 180, 248, 0.12);
+  --text-primary: #eff6ff;
+  --text-secondary: #c4d3ea;
+  --text-muted: #93a4bf;
+  --border: rgba(148, 163, 184, 0.22);
+  --shadow: 0 18px 36px rgba(3, 7, 18, 0.35);
+  --accent: #8ab4f8;
+  --accent-hover: #a9c7fb;
+  --accent-foreground: #0f172a;
+  --danger: #ff9b9b;
+  --icon-background: rgba(138, 180, 248, 0.16);
+  --icon-foreground: #8ab4f8;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  width: 352px;
+  min-height: 580px;
+  background: var(--page-background);
+  color: var(--text-primary);
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+body,
+button,
+input,
+select {
+  font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100%;
+}
+
+button,
+input,
+select {
+  outline: none;
+}
+
+button {
+  border: 0;
+}
+
+.popup-shell {
+  min-height: 580px;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(18px);
+}
+
+.popup-header,
+.popup-footer {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.popup-header {
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.title-block h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.title-block p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.account-row {
+  display: flex;
+  gap: 10px;
+}
+
+.account-select,
+.form-panel input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.account-select {
+  flex: 1;
+  padding: 10px 12px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.account-select:focus,
+.form-panel input:focus {
+  border-color: rgba(26, 115, 232, 0.5);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.14);
+}
+
+.icon-button,
+.text-button,
+.action-button {
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+}
+
+.icon-button:hover,
+.text-button:hover,
+.action-button:hover,
+.app-card:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.primary-button:hover {
+  background: var(--accent-hover);
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0 12px;
+}
+
+.app-content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.app-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5);
-  border-radius: 10px;
+.app-content::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
 }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(75, 85, 99, 0.5);
+.section-heading,
+.status-line {
+  padding: 10px 18px 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 8px 18px 4px;
+}
+
+.app-card {
+  display: flex;
+  min-height: 96px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 10px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+}
+
+.app-card:hover {
+  background: var(--surface-hover);
+}
+
+.app-card:focus-visible,
+.icon-button:focus-visible,
+.text-button:focus-visible,
+.action-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18);
+}
+
+.app-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--icon-background);
+  color: var(--icon-foreground);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.app-name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.popup-footer {
+  padding: 16px 18px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.text-button,
+.action-button {
+  min-height: 38px;
+  border-radius: 12px;
+  padding: 9px 14px;
+}
+
+.text-button {
+  background: transparent;
+  color: var(--accent);
+}
+
+.text-button:hover {
+  background: var(--surface-muted);
+}
+
+.form-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-panel input {
+  padding: 10px 12px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.message,
+.hint {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.message {
+  color: var(--text-secondary);
+}
+
+.message.error {
+  color: var(--danger);
+}
+
+.hint {
+  color: var(--text-muted);
 }
