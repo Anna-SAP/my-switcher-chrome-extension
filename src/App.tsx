@@ -1,5 +1,10 @@
-import {type ChangeEvent, type MouseEvent, useEffect, useState} from 'react';
-import {Moon, Plus, Sun} from 'lucide-react';
+import {type ChangeEvent, type MouseEvent, useEffect, useRef, useState} from 'react';
+import {Download, Moon, Plus, Sun, Upload} from 'lucide-react';
+import {
+  createCustomAppsBackup,
+  createCustomAppsBackupFileName,
+  parseCustomAppsBackup,
+} from '@/lib/custom-app-backup';
 import {aiApps, generalApps} from '@/data/apps';
 import {loadPopupState, openAppTab, savePopupState} from '@/lib/popup-state';
 import {buildAuthUrl, normalizeCustomUrl} from '@/lib/url';
@@ -69,7 +74,9 @@ export default function App() {
   const [customUrl, setCustomUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [statusVariant, setStatusVariant] = useState<'default' | 'success' | 'error'>('default');
   const [isLoading, setIsLoading] = useState(true);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -84,6 +91,7 @@ export default function App() {
         console.error('Failed to load popup state.', error);
         if (!isCancelled) {
           setStatusMessage('Firefox storage is unavailable. Preview state will stay local.');
+          setStatusVariant('error');
         }
       })
       .finally(() => {
@@ -101,13 +109,22 @@ export default function App() {
     document.documentElement.dataset.theme = popupState.theme;
   }, [popupState.theme]);
 
-  async function persistState(patch: Partial<PopupState>) {
+  async function persistState(
+    patch: Partial<PopupState>,
+    options?: {preserveStatusMessage?: boolean},
+  ): Promise<boolean> {
     try {
       await savePopupState(patch);
-      setStatusMessage('');
+      if (!options?.preserveStatusMessage) {
+        setStatusMessage('');
+        setStatusVariant('default');
+      }
+      return true;
     } catch (error) {
       console.error('Failed to persist popup state.', error);
       setStatusMessage('Failed to sync popup settings to Firefox storage.');
+      setStatusVariant('error');
+      return false;
     }
   }
 
@@ -126,6 +143,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to open target tab.', error);
       setStatusMessage('Firefox blocked the new tab request.');
+      setStatusVariant('error');
     }
   }
 
@@ -200,6 +218,80 @@ export default function App() {
     await persistState({customApps: nextCustomApps});
   }
 
+  function handleExportCustomApps() {
+    const backupContent = createCustomAppsBackup(popupState.customApps);
+    const blob = new Blob([backupContent], {type: 'application/json'});
+    const downloadUrl = URL.createObjectURL(blob);
+    const downloadLink = document.createElement('a');
+
+    downloadLink.href = downloadUrl;
+    downloadLink.download = createCustomAppsBackupFileName();
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(downloadUrl);
+
+    setStatusMessage(
+      popupState.customApps.length > 0
+        ? `Exported ${popupState.customApps.length} custom apps.`
+        : 'Exported an empty custom app backup.',
+    );
+    setStatusVariant('success');
+  }
+
+  function handleImportTrigger() {
+    importInputRef.current?.click();
+  }
+
+  async function handleImportCustomApps(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!selectedFile) {
+      return;
+    }
+
+    try {
+      const importedCustomApps = parseCustomAppsBackup(await selectedFile.text());
+
+      if (
+        popupState.customApps.length > 0 &&
+        !window.confirm(
+          `Importing "${selectedFile.name}" will replace your current ${popupState.customApps.length} custom apps. Continue?`,
+        )
+      ) {
+        return;
+      }
+
+      closeCustomForm();
+      setPopupState((currentState) => ({
+        ...currentState,
+        customApps: importedCustomApps,
+      }));
+
+      const isPersisted = await persistState(
+        {customApps: importedCustomApps},
+        {preserveStatusMessage: true},
+      );
+      if (!isPersisted) {
+        return;
+      }
+
+      setStatusMessage(
+        importedCustomApps.length > 0
+          ? `Imported ${importedCustomApps.length} custom apps from ${selectedFile.name}.`
+          : `Imported ${selectedFile.name}. Custom apps are now empty.`,
+      );
+      setStatusVariant('success');
+    } catch (error) {
+      console.error('Failed to import custom apps.', error);
+      setStatusMessage(
+        error instanceof Error ? error.message : 'Failed to import custom apps.',
+      );
+      setStatusVariant('error');
+    }
+  }
+
   async function handleDeleteCustomApp(
     event: MouseEvent<HTMLButtonElement>,
     index: number,
@@ -231,11 +323,18 @@ export default function App() {
 
   return (
     <main className="popup-shell">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="visually-hidden"
+        onChange={(event) => void handleImportCustomApps(event)}
+      />
+
       <header className="popup-header">
         <div className="header-row">
           <div className="title-block">
             <h1>My Switcher</h1>
-            <p>Switch Google services with Firefox account-aware tabs.</p>
           </div>
           <button
             type="button"
@@ -270,38 +369,46 @@ export default function App() {
             <Plus size={18} />
           </button>
         </div>
-      </header>
 
-      <div className="app-content">
-        {isLoading ? <div className="status-line">Loading saved Firefox settings...</div> : null}
-
-        <AppSection title="AI Apps" apps={aiApps} onAppOpen={(app) => void handleOpenApp(app)} />
-        <AppSection
-          title="General"
-          apps={generalApps}
-          onAppOpen={(app) => void handleOpenApp(app)}
-        />
-
-        {popupState.customApps.length > 0 ? (
-          <AppSection
-            title="Custom"
-            apps={popupState.customApps}
-            onAppOpen={(app) => void handleOpenApp(app)}
-            onCustomAppDelete={(event, index) => void handleDeleteCustomApp(event, index)}
-          />
-        ) : null}
-      </div>
-
-      <footer className="popup-footer">
-        {!showCustomForm ? (
+        <div className="quick-actions">
           <button
             type="button"
-            className="text-button"
-            onClick={() => setShowCustomForm(true)}
+            className="text-button utility-button"
+            disabled={popupState.customApps.length === 0}
+            onClick={handleExportCustomApps}
+            title={
+              popupState.customApps.length === 0
+                ? 'Add a custom app before exporting.'
+                : 'Export custom apps to a backup file.'
+            }
           >
-            + Add custom app
+            <Download size={14} />
+            Export
           </button>
-        ) : (
+
+          <button
+            type="button"
+            className="text-button utility-button"
+            onClick={handleImportTrigger}
+            title="Import custom apps from a backup file."
+          >
+            <Upload size={14} />
+            Import
+          </button>
+
+          {!showCustomForm ? (
+            <button
+              type="button"
+              className="text-button utility-button"
+              onClick={() => setShowCustomForm(true)}
+            >
+              <Plus size={14} />
+              Add app
+            </button>
+          ) : null}
+        </div>
+
+        {showCustomForm ? (
           <div className="form-panel">
             <input
               type="text"
@@ -331,13 +438,30 @@ export default function App() {
 
             {formError ? <p className="message error">{formError}</p> : null}
           </div>
-        )}
+        ) : null}
 
-        <p className="hint">
-          Custom cards can be removed with a right-click. Only `storage` permission is requested.
-        </p>
-        {statusMessage ? <p className="message error">{statusMessage}</p> : null}
-      </footer>
+        {statusMessage ? <p className={`message ${statusVariant}`}>{statusMessage}</p> : null}
+      </header>
+
+      <div className="app-content">
+        {isLoading ? <div className="status-line">Loading saved Firefox settings...</div> : null}
+
+        <AppSection title="AI Apps" apps={aiApps} onAppOpen={(app) => void handleOpenApp(app)} />
+        <AppSection
+          title="General"
+          apps={generalApps}
+          onAppOpen={(app) => void handleOpenApp(app)}
+        />
+
+        {popupState.customApps.length > 0 ? (
+          <AppSection
+            title="Custom"
+            apps={popupState.customApps}
+            onAppOpen={(app) => void handleOpenApp(app)}
+            onCustomAppDelete={(event, index) => void handleDeleteCustomApp(event, index)}
+          />
+        ) : null}
+      </div>
     </main>
   );
 }

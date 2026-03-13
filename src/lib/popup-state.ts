@@ -21,7 +21,7 @@ function parseAccountIndex(value: unknown, accountCount: number): number {
   return Math.min(parsed, accountCount - 1);
 }
 
-function parseCustomApps(value: unknown): AppEntry[] {
+export function sanitizeCustomApps(value: unknown): AppEntry[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -60,7 +60,7 @@ function sanitizePopupState(rawState: Record<string, unknown>): PopupState {
   return {
     accountIndex: parseAccountIndex(rawState.accountIndex, accountCount),
     accountCount,
-    customApps: parseCustomApps(rawState.customApps),
+    customApps: sanitizeCustomApps(rawState.customApps),
     theme: rawState.theme === 'dark' ? 'dark' : 'light',
   };
 }

@@ -14,6 +14,13 @@ export interface PopupState {
   theme: ThemeMode;
 }
 
+export interface CustomAppsBackupPayload {
+  app: 'my-switcher';
+  schemaVersion: 1;
+  exportedAt: string;
+  customApps: AppEntry[];
+}
+
 export const DEFAULT_POPUP_STATE: PopupState = {
   accountIndex: 0,
   accountCount: 5,
