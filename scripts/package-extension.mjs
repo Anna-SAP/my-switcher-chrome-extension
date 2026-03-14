@@ -12,6 +12,7 @@ if (!supportedTargets.has(target)) {
 
 const sourceDir = path.resolve('dist', target);
 const artifactsDir = path.resolve('artifacts');
+const unpackedArtifactsDir = path.join(artifactsDir, `my-switcher-${target}`);
 const extension = target === 'firefox' ? 'xpi' : 'zip';
 
 function createOutputFilePath(fileExtension) {
@@ -40,9 +41,16 @@ async function addDirectoryToZip(zip, directoryPath, prefix = '') {
   }
 }
 
+async function syncUnpackedBuild() {
+  await fs.rm(unpackedArtifactsDir, {recursive: true, force: true});
+  await fs.cp(sourceDir, unpackedArtifactsDir, {recursive: true});
+  console.log(`${target} unpacked build synced to ${unpackedArtifactsDir}`);
+}
+
 async function main() {
   await fs.access(sourceDir);
   await fs.mkdir(artifactsDir, {recursive: true});
+  await syncUnpackedBuild();
 
   const zip = new JSZip();
   await addDirectoryToZip(zip, sourceDir);
