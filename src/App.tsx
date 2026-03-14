@@ -1,5 +1,6 @@
-import {type ChangeEvent, type MouseEvent, useEffect, useRef, useState} from 'react';
+import {type ChangeEvent, type MouseEvent, useCallback, useEffect, useRef, useState} from 'react';
 import {
+  ChevronDown,
   Download,
   LoaderCircle,
   Moon,
@@ -25,9 +26,134 @@ import {
 } from '@/lib/google-accounts';
 import {loadPopupState, openAppTab, savePopupState} from '@/lib/popup-state';
 import {buildAuthUrl, normalizeCustomUrl} from '@/lib/url';
-import {DEFAULT_POPUP_STATE, type AppEntry, type PopupState} from '@/types/extension';
+import {DEFAULT_POPUP_STATE, type AppEntry, type GoogleAccountProfile, type PopupState} from '@/types/extension';
 
 const customColors = ['#ea4335', '#34a853', '#fbbc05', '#4285f4', '#ff6d00', '#00bfa5'];
+
+function AccountAvatar({
+  profile,
+  size = 24,
+}: {
+  profile?: GoogleAccountProfile;
+  size?: number;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const avatarUrl = profile?.avatarUrl;
+  const fallbackLetter = profile
+    ? (profile.displayName || profile.email).charAt(0).toUpperCase()
+    : '?';
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        className="account-avatar"
+        src={avatarUrl}
+        alt=""
+        width={size}
+        height={size}
+        referrerPolicy="no-referrer"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className="account-avatar account-avatar-fallback"
+      style={{width: size, height: size, fontSize: Math.round(size * 0.5)}}
+    >
+      {fallbackLetter}
+    </span>
+  );
+}
+
+function AccountDropdown({
+  accountIndex,
+  accountCount,
+  accountProfiles,
+  onChange,
+}: {
+  accountIndex: number;
+  accountCount: number;
+  accountProfiles: GoogleAccountProfile[];
+  onChange: (index: number) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const closeDropdown = useCallback(() => setIsOpen(false), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleClickOutside(event: Event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        closeDropdown();
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeDropdown();
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, closeDropdown]);
+
+  const selectedProfile = getGoogleAccountProfile(accountIndex, accountProfiles);
+  const selectedLabel = formatGoogleAccountOptionLabel(accountIndex, accountProfiles);
+
+  return (
+    <div className={`account-dropdown ${isOpen ? 'open' : ''}`} ref={dropdownRef}>
+      <button
+        type="button"
+        className="account-dropdown-trigger"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label="Select Google account slot"
+        title={selectedLabel}
+      >
+        <AccountAvatar profile={selectedProfile} size={24} />
+        <span className="account-dropdown-label">{selectedLabel}</span>
+        <ChevronDown size={14} className={`account-dropdown-chevron ${isOpen ? 'rotated' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <ul className="account-dropdown-menu" role="listbox" aria-activedescendant={`account-option-${accountIndex}`}>
+          {Array.from({length: accountCount}, (_value, index) => {
+            const profile = getGoogleAccountProfile(index, accountProfiles);
+            const label = formatGoogleAccountOptionLabel(index, accountProfiles);
+            const isSelected = index === accountIndex;
+
+            return (
+              <li
+                key={index}
+                id={`account-option-${index}`}
+                role="option"
+                aria-selected={isSelected}
+                className={`account-dropdown-item ${isSelected ? 'selected' : ''}`}
+                onClick={() => {
+                  onChange(index);
+                  closeDropdown();
+                }}
+              >
+                <AccountAvatar profile={profile} size={28} />
+                <span className="account-dropdown-item-label">{label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function AppSection({
   title,
@@ -180,9 +306,7 @@ export default function App() {
     }
   }
 
-  async function handleAccountChange(event: ChangeEvent<HTMLSelectElement>) {
-    const nextAccountIndex = Number.parseInt(event.target.value, 10);
-
+  async function handleAccountChange(nextAccountIndex: number) {
     setPopupState((currentState) => ({
       ...currentState,
       accountIndex: nextAccountIndex,
@@ -460,19 +584,12 @@ export default function App() {
         </div>
 
         <div className="account-row">
-          <select
-            className="account-select"
-            value={popupState.accountIndex}
-            onChange={(event) => void handleAccountChange(event)}
-            aria-label="Select Google account slot"
-            title={selectedAccountIdentityLabel ?? undefined}
-          >
-            {Array.from({length: popupState.accountCount}, (_value, index) => (
-              <option key={index} value={index}>
-                {formatGoogleAccountOptionLabel(index, popupState.accountProfiles)}
-              </option>
-            ))}
-          </select>
+          <AccountDropdown
+            accountIndex={popupState.accountIndex}
+            accountCount={popupState.accountCount}
+            accountProfiles={popupState.accountProfiles}
+            onChange={(index) => void handleAccountChange(index)}
+          />
 
           <div className="account-actions">
             <button
