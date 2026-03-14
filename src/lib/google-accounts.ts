@@ -65,6 +65,12 @@ export function getGoogleAccountProfile(
   return accountProfiles.find((accountProfile) => accountProfile.authuser === authuser);
 }
 
+export function formatGoogleAccountIdentityLabel(accountProfile: GoogleAccountProfile): string {
+  return accountProfile.displayName && accountProfile.displayName !== accountProfile.email
+    ? `${accountProfile.displayName} <${accountProfile.email}>`
+    : accountProfile.email;
+}
+
 export function formatGoogleAccountOptionLabel(
   authuser: number,
   accountProfiles: GoogleAccountProfile[],
@@ -74,12 +80,7 @@ export function formatGoogleAccountOptionLabel(
     return authuser === 0 ? 'Account 0 (Default u/0)' : `Account ${authuser} (u/${authuser})`;
   }
 
-  const preferredLabel =
-    accountProfile.displayName && accountProfile.displayName !== accountProfile.email
-      ? accountProfile.displayName
-      : accountProfile.email;
-
-  return `${preferredLabel} (u/${authuser})`;
+  return `${formatGoogleAccountIdentityLabel(accountProfile)} (u/${authuser})`;
 }
 
 export function formatAccountsLastLoadedAt(accountsLastLoadedAt: string | null): string | null {

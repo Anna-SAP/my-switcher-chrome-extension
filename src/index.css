@@ -164,7 +164,8 @@ button {
   padding: 8px 10px;
   appearance: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .account-select:focus,

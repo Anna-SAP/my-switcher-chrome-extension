@@ -22,6 +22,14 @@ type NativeTabsApi = {
   };
 };
 
+type ScrapedGoogleAccount = {
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  authuser?: number;
+  isPrimary?: boolean;
+};
+
 const nativeRuntime = (
   globalThis as {
     browser?: {runtime?: {onMessage?: {addListener(listener: (...args: any[]) => unknown): void}}};
@@ -43,6 +51,94 @@ const nativeTabs = (
     chrome?: {tabs?: NativeTabsApi};
   }
 ).chrome?.tabs;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeScrapedAccounts(rawAccounts: unknown): ScrapedGoogleAccount[] {
+  if (!Array.isArray(rawAccounts)) {
+    return [];
+  }
+
+  const discoveredAccounts = rawAccounts.flatMap((account) => {
+    if (!isRecord(account)) {
+      return [];
+    }
+
+    const email = typeof account.email === 'string' ? account.email.trim().toLowerCase() : '';
+    const displayName = typeof account.displayName === 'string' ? account.displayName.trim() : '';
+    const avatarUrl = typeof account.avatarUrl === 'string' ? account.avatarUrl.trim() : '';
+    const authuser = Number(account.authuser);
+    const isPrimary = account.isPrimary === true;
+
+    if (!email || !displayName) {
+      return [];
+    }
+
+    return [
+      {
+        email,
+        displayName,
+        avatarUrl: avatarUrl || undefined,
+        authuser:
+          Number.isInteger(authuser) && authuser >= 0 ? authuser : undefined,
+        isPrimary,
+      },
+    ];
+  });
+
+  const usedAuthusers = new Set<number>();
+  const accountsWithResolvedAuthuser = discoveredAccounts.map((account) => {
+    if (account.authuser === undefined || usedAuthusers.has(account.authuser)) {
+      return {
+        ...account,
+        authuser: undefined,
+      };
+    }
+
+    usedAuthusers.add(account.authuser);
+    return account;
+  });
+
+  const availableAuthusers = Array.from(
+    {length: accountsWithResolvedAuthuser.length},
+    (_value, index) => index,
+  ).filter((authuser) => !usedAuthusers.has(authuser));
+
+  const primaryAccount = accountsWithResolvedAuthuser.find(
+    (account) => account.authuser === undefined && account.isPrimary,
+  );
+  if (primaryAccount && availableAuthusers.includes(0)) {
+    primaryAccount.authuser = 0;
+    usedAuthusers.add(0);
+    availableAuthusers.splice(availableAuthusers.indexOf(0), 1);
+  }
+
+  for (const account of accountsWithResolvedAuthuser) {
+    if (account.authuser !== undefined) {
+      continue;
+    }
+
+    const nextAuthuser = availableAuthusers.shift();
+    if (nextAuthuser === undefined) {
+      continue;
+    }
+
+    account.authuser = nextAuthuser;
+  }
+
+  return accountsWithResolvedAuthuser.flatMap((account) =>
+    account.authuser === undefined
+      ? []
+      : [
+          {
+            ...account,
+            authuser: account.authuser,
+          },
+        ],
+  );
+}
 
 function delay(durationMs: number): Promise<void> {
   return new Promise((resolve) => {
@@ -78,6 +174,7 @@ function waitForTabLoad(tabId: number): Promise<void> {
 
 function scrapeGoogleAccountsFromPage() {
   const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu;
+  const authuserPattern = /(?:[?&]authuser=|\/u\/)(\d+)/iu;
   const ignoredLabels = new Set([
     'manage your google account',
     'hide more accounts',
@@ -87,9 +184,67 @@ function scrapeGoogleAccountsFromPage() {
     'use another account',
     'google account',
   ]);
+  const searchRoot = document.documentElement ?? document.body;
 
   function normalizeText(value: string | null | undefined): string {
     return (value ?? '').replace(/\s+/gu, ' ').trim();
+  }
+
+  function isPrimaryUiText(value: string): boolean {
+    const normalizedValue = normalizeText(value).toLowerCase();
+    return (
+      normalizedValue === 'manage your google account' ||
+      /^hi,\s*.+[!.]?$/iu.test(normalizedValue)
+    );
+  }
+
+  function collectEmails(value: string): string[] {
+    return Array.from(
+      new Set(
+        Array.from(value.matchAll(emailPattern), (match) => match[0].toLowerCase()),
+      ),
+    );
+  }
+
+  function extractAuthuserFromValue(value: string | null | undefined): number | null {
+    const normalizedValue = normalizeText(value);
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const authuserMatch = authuserPattern.exec(normalizedValue);
+    if (!authuserMatch) {
+      return null;
+    }
+
+    const authuser = Number(authuserMatch[1]);
+    return Number.isInteger(authuser) && authuser >= 0 ? authuser : null;
+  }
+
+  function hasPrimaryUiHint(textParts: string[]): boolean {
+    return textParts.some((textPart) => isPrimaryUiText(textPart));
+  }
+
+  function extractAuthuserHintFromElement(accountContainer: Element): number | null {
+    const candidateElements = [accountContainer, ...getDeepDescendantElements(accountContainer)];
+
+    for (const candidateElement of candidateElements) {
+      const directAuthuser =
+        extractAuthuserFromValue(candidateElement.getAttribute('data-authuser')) ??
+        extractAuthuserFromValue(candidateElement.getAttribute('data-auth-user'));
+      if (directAuthuser !== null) {
+        return directAuthuser;
+      }
+
+      for (const attribute of Array.from(candidateElement.attributes)) {
+        const extractedAuthuser = extractAuthuserFromValue(attribute.value);
+        if (extractedAuthuser !== null) {
+          return extractedAuthuser;
+        }
+      }
+    }
+
+    return null;
   }
 
   function isVisibleElement(element: Element): boolean {
@@ -104,23 +259,77 @@ function scrapeGoogleAccountsFromPage() {
     );
   }
 
-  function collectTextParts(container: Element): string[] {
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    const textParts: string[] = [];
-    let currentNode = walker.nextNode();
+  function getComposedParentElement(element: Element): Element | null {
+    if (element.parentElement) {
+      return element.parentElement;
+    }
 
-    while (currentNode) {
-      const parentElement = currentNode.parentElement;
-      const normalizedText = normalizeText(currentNode.textContent);
+    const rootNode = element.getRootNode();
+    return rootNode instanceof ShadowRoot ? rootNode.host : null;
+  }
+
+  function forEachDeepChildNode(rootNode: Node, visit: (node: Node) => void) {
+    const pendingNodes = Array.from(rootNode.childNodes);
+
+    while (pendingNodes.length > 0) {
+      const currentNode = pendingNodes.shift();
+      if (!currentNode) {
+        continue;
+      }
+
+      visit(currentNode);
+
+      if (currentNode instanceof Element && currentNode.shadowRoot) {
+        pendingNodes.unshift(...Array.from(currentNode.shadowRoot.childNodes));
+      }
+
+      pendingNodes.unshift(...Array.from(currentNode.childNodes));
+    }
+  }
+
+  function getDeepDescendantElements(rootElement: Element): Element[] {
+    const descendantElements: Element[] = [];
+
+    forEachDeepChildNode(rootElement, (node) => {
+      if (node instanceof Element) {
+        descendantElements.push(node);
+      }
+    });
+
+    return descendantElements;
+  }
+
+  function findDeepImage(rootElement: Element): HTMLImageElement | null {
+    if (rootElement instanceof HTMLImageElement) {
+      return rootElement;
+    }
+
+    for (const descendantElement of getDeepDescendantElements(rootElement)) {
+      if (descendantElement instanceof HTMLImageElement) {
+        return descendantElement;
+      }
+    }
+
+    return null;
+  }
+
+  function collectTextParts(container: Element): string[] {
+    const textParts: string[] = [];
+
+    forEachDeepChildNode(container, (node) => {
+      if (node.nodeType !== Node.TEXT_NODE) {
+        return;
+      }
+
+      const parentElement = node.parentElement;
+      const normalizedText = normalizeText(node.textContent);
 
       if (parentElement && isVisibleElement(parentElement) && normalizedText) {
         if (textParts[textParts.length - 1] !== normalizedText) {
           textParts.push(normalizedText);
         }
       }
-
-      currentNode = walker.nextNode();
-    }
+    });
 
     return textParts;
   }
@@ -128,18 +337,24 @@ function scrapeGoogleAccountsFromPage() {
   function findAccountContainer(startingElement: Element, email: string): Element | null {
     let currentElement: Element | null = startingElement;
     let fallbackElement: Element | null = startingElement;
+    let bestElement: Element | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
 
-    for (let depth = 0; currentElement && depth < 8; depth += 1) {
+    for (let depth = 0; currentElement && depth < 14; depth += 1) {
       if (!isVisibleElement(currentElement)) {
-        currentElement = currentElement.parentElement;
+        currentElement = getComposedParentElement(currentElement);
         continue;
       }
 
-      const normalizedText = normalizeText(currentElement.textContent);
       const textParts = collectTextParts(currentElement);
-      const hasAvatar = Boolean(currentElement.querySelector('img'));
+      const normalizedText = normalizeText(textParts.join(' '));
+      const uniqueEmails = collectEmails(normalizedText);
+      const hasAvatar = Boolean(findDeepImage(currentElement));
       const containsEmail = normalizedText.toLowerCase().includes(email.toLowerCase());
-      const looksLikeCard = normalizedText.length <= 260 && textParts.length <= 8;
+      const looksLikeCard =
+        normalizedText.length <= 260 && textParts.length <= 8 && uniqueEmails.length <= 1;
+      const hasPrimaryHint = hasPrimaryUiHint(textParts);
+      const authuserHint = extractAuthuserHintFromElement(currentElement);
 
       if (containsEmail) {
         fallbackElement = currentElement;
@@ -149,14 +364,25 @@ function scrapeGoogleAccountsFromPage() {
         fallbackElement = currentElement;
       }
 
-      if (containsEmail && hasAvatar && looksLikeCard) {
-        return currentElement;
+      if (containsEmail) {
+        let score = 0;
+        score += uniqueEmails.length === 1 ? 4 : -uniqueEmails.length;
+        score += hasAvatar ? 3 : 0;
+        score += looksLikeCard ? 3 : 0;
+        score += hasPrimaryHint ? 8 : 0;
+        score += authuserHint !== null ? 10 : 0;
+        score -= depth * 0.25;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestElement = currentElement;
+        }
       }
 
-      currentElement = currentElement.parentElement;
+      currentElement = getComposedParentElement(currentElement);
     }
 
-    return fallbackElement;
+    return bestElement ?? fallbackElement;
   }
 
   function extractDisplayName(textParts: string[], email: string): string {
@@ -185,27 +411,132 @@ function scrapeGoogleAccountsFromPage() {
     return email;
   }
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const discoveredAccounts: Array<{
-    email: string;
-    displayName: string;
-    avatarUrl?: string;
-  }> = [];
-  const seenEmails = new Set<string>();
-  let currentNode = walker.nextNode();
+  function findPrimaryAccountContainer(): Element | null {
+    let bestElement: Element | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
 
-  while (currentNode) {
-    const parentElement = currentNode.parentElement;
-    const normalizedText = normalizeText(currentNode.textContent);
+    forEachDeepChildNode(searchRoot, (node) => {
+      if (node.nodeType !== Node.TEXT_NODE) {
+        return;
+      }
+
+      const parentElement = node.parentElement;
+      const normalizedText = normalizeText(node.textContent);
+      if (!parentElement || !isVisibleElement(parentElement) || !isPrimaryUiText(normalizedText)) {
+        return;
+      }
+
+      let currentElement: Element | null = parentElement;
+      for (let depth = 0; currentElement && depth < 14; depth += 1) {
+        if (!isVisibleElement(currentElement)) {
+          currentElement = getComposedParentElement(currentElement);
+          continue;
+        }
+
+        const textParts = collectTextParts(currentElement);
+        const normalizedCardText = normalizeText(textParts.join(' '));
+        const uniqueEmails = collectEmails(normalizedCardText);
+        const hasAvatar = Boolean(findDeepImage(currentElement));
+        const hasPrimaryHint = hasPrimaryUiHint(textParts);
+
+        if (uniqueEmails.length !== 1 || !hasPrimaryHint) {
+          currentElement = getComposedParentElement(currentElement);
+          continue;
+        }
+
+        let score = 0;
+        score += 20;
+        score += hasAvatar ? 4 : 0;
+        score += extractAuthuserHintFromElement(currentElement) !== null ? 8 : 0;
+        score -= Math.max(uniqueEmails.length - 1, 0) * 4;
+        score -= textParts.length > 16 ? textParts.length - 16 : 0;
+        score -= depth * 0.25;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestElement = currentElement;
+        }
+
+        currentElement = getComposedParentElement(currentElement);
+      }
+    });
+
+    return bestElement;
+  }
+
+  function extractAuthuserFromContainer(accountContainer: Element): number | null {
+    let currentElement: Element | null = accountContainer;
+
+    for (let depth = 0; currentElement && depth < 10; depth += 1) {
+      const authuserHint = extractAuthuserHintFromElement(currentElement);
+      if (authuserHint !== null) {
+        return authuserHint;
+      }
+
+      currentElement = getComposedParentElement(currentElement);
+    }
+
+    return null;
+  }
+
+  function isPrimaryAccountContainer(accountContainer: Element): boolean {
+    let currentElement: Element | null = accountContainer;
+
+    for (let depth = 0; currentElement && depth < 10; depth += 1) {
+      if (hasPrimaryUiHint(collectTextParts(currentElement))) {
+        return true;
+      }
+
+      currentElement = getComposedParentElement(currentElement);
+    }
+
+    return false;
+  }
+
+  const discoveredAccounts: ScrapedGoogleAccount[] = [];
+  const seenEmails = new Set<string>();
+  const deepTextEntries: Array<{parentElement: Element; normalizedText: string}> = [];
+
+  const primaryAccountContainer = findPrimaryAccountContainer();
+  if (primaryAccountContainer) {
+    const primaryTextParts = collectTextParts(primaryAccountContainer);
+    const primaryEmails = collectEmails(primaryTextParts.join(' '));
+    const primaryEmail = primaryEmails[0];
+
+    if (primaryEmail) {
+      discoveredAccounts.push({
+        email: primaryEmail,
+        displayName: extractDisplayName(primaryTextParts, primaryEmail),
+        avatarUrl: findDeepImage(primaryAccountContainer)?.getAttribute('src') ?? undefined,
+        authuser: extractAuthuserFromContainer(primaryAccountContainer) ?? 0,
+        isPrimary: true,
+      });
+      seenEmails.add(primaryEmail);
+    }
+  }
+
+  forEachDeepChildNode(searchRoot, (node) => {
+    if (node.nodeType !== Node.TEXT_NODE) {
+      return;
+    }
+
+    const parentElement = node.parentElement;
+    const normalizedText = normalizeText(node.textContent);
 
     if (!parentElement || !isVisibleElement(parentElement) || !normalizedText) {
-      currentNode = walker.nextNode();
+      return;
+    }
+
+    deepTextEntries.push({parentElement, normalizedText});
+  });
+
+  for (const {parentElement, normalizedText} of deepTextEntries) {
+    if (!parentElement || !isVisibleElement(parentElement) || !normalizedText) {
       continue;
     }
 
     const emailMatches = Array.from(normalizedText.matchAll(emailPattern));
     if (emailMatches.length === 0) {
-      currentNode = walker.nextNode();
       continue;
     }
 
@@ -222,17 +553,19 @@ function scrapeGoogleAccountsFromPage() {
 
       const textParts = collectTextParts(accountContainer);
       const displayName = extractDisplayName(textParts, email);
-      const avatarUrl = accountContainer.querySelector('img')?.getAttribute('src') ?? undefined;
+      const avatarUrl = findDeepImage(accountContainer)?.getAttribute('src') ?? undefined;
+      const authuser = extractAuthuserFromContainer(accountContainer);
+      const isPrimary = isPrimaryAccountContainer(accountContainer);
 
       discoveredAccounts.push({
         email,
         displayName,
         avatarUrl: avatarUrl || undefined,
+        authuser: authuser ?? undefined,
+        isPrimary,
       });
       seenEmails.add(email);
     }
-
-    currentNode = walker.nextNode();
   }
 
   return discoveredAccounts;
@@ -249,12 +582,7 @@ async function scrapeAccountsFromTab(tabId: number) {
   });
   const executionResult = executionResults[0]?.result;
   const sanitizedAccounts = sanitizeGoogleAccountProfiles(
-    Array.isArray(executionResult)
-      ? executionResult.map((account, index) => ({
-          ...account,
-          authuser: index,
-        }))
-      : [],
+    normalizeScrapedAccounts(executionResult),
   );
 
   return sanitizedAccounts;

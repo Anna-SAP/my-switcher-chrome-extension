@@ -18,6 +18,7 @@ import {aiApps, generalApps} from '@/data/apps';
 import {
   ensureGoogleAccountsPermission,
   formatAccountsLastLoadedAt,
+  formatGoogleAccountIdentityLabel,
   formatGoogleAccountOptionLabel,
   getGoogleAccountProfile,
   requestGoogleAccountsSync,
@@ -421,9 +422,12 @@ export default function App() {
     popupState.accountIndex,
     popupState.accountProfiles,
   );
+  const selectedAccountIdentityLabel = selectedAccountProfile
+    ? formatGoogleAccountIdentityLabel(selectedAccountProfile)
+    : null;
   const accountsLastLoadedLabel = formatAccountsLastLoadedAt(popupState.accountsLastLoadedAt);
-  const accountSummary = selectedAccountProfile
-    ? [selectedAccountProfile.email, accountsLastLoadedLabel ? `Synced ${accountsLastLoadedLabel}` : null]
+  const accountSummary = selectedAccountIdentityLabel
+    ? [selectedAccountIdentityLabel, accountsLastLoadedLabel ? `Synced ${accountsLastLoadedLabel}` : null]
         .filter(Boolean)
         .join(' | ')
     : popupState.accountsLastLoadedAt
@@ -461,11 +465,7 @@ export default function App() {
             value={popupState.accountIndex}
             onChange={(event) => void handleAccountChange(event)}
             aria-label="Select Google account slot"
-            title={
-              selectedAccountProfile
-                ? `${selectedAccountProfile.displayName} <${selectedAccountProfile.email}>`
-                : undefined
-            }
+            title={selectedAccountIdentityLabel ?? undefined}
           >
             {Array.from({length: popupState.accountCount}, (_value, index) => (
               <option key={index} value={index}>
