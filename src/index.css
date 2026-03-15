@@ -101,6 +101,16 @@ button {
   backdrop-filter: blur(18px);
 }
 
+/* When opened as a full tab (Firefox import workaround), center the popup */
+@media (min-width: 600px) {
+  .popup-shell-tab {
+    max-width: var(--popup-width);
+    margin: 32px auto;
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
 .popup-header {
   background: var(--surface);
   border-color: var(--border);
