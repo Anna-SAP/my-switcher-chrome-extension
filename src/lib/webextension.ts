@@ -132,6 +132,8 @@ function createChromeAdapter(chromeApi: any): BrowserApi {
   };
 }
 
+export const isFirefox = typeof (globalThis as {browser?: unknown}).browser !== 'undefined';
+
 export const browserApi: BrowserApi | null = (() => {
   const nativeBrowser = (globalThis as {browser?: BrowserApi}).browser;
   if (

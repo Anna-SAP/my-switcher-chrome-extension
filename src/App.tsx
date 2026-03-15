@@ -26,6 +26,7 @@ import {
 } from '@/lib/google-accounts';
 import {loadPopupState, openAppTab, savePopupState} from '@/lib/popup-state';
 import {buildAuthUrl, normalizeCustomUrl} from '@/lib/url';
+import {browserApi, isFirefox} from '@/lib/webextension';
 import {DEFAULT_POPUP_STATE, type AppEntry, type GoogleAccountProfile, type PopupState} from '@/types/extension';
 
 const customColors = ['#ea4335', '#34a853', '#fbbc05', '#4285f4', '#ff6d00', '#00bfa5'];
@@ -453,6 +454,17 @@ export default function App() {
   }
 
   function handleImportTrigger() {
+    // Firefox closes the popup when a file dialog opens, so the onChange
+    // callback never fires. Work around this by opening the popup page in
+    // a full tab where file inputs work normally.
+    if (isFirefox && browserApi && !window.location.search.includes('tab=1')) {
+      void browserApi.tabs.create({
+        url: `${(globalThis as any).browser.runtime.getURL('popup.html')}?tab=1`,
+        active: true,
+      });
+      return;
+    }
+
     importInputRef.current?.click();
   }
 
@@ -559,7 +571,7 @@ export default function App() {
       : 'Load Google account names and emails from your signed-in browser session.';
 
   return (
-    <main className="popup-shell">
+    <main className={`popup-shell${window.location.search.includes('tab=1') ? ' popup-shell-tab' : ''}`}>
       <input
         ref={importInputRef}
         type="file"
