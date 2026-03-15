@@ -21,14 +21,8 @@ type BrowserApi = {
     create(createProperties: {url: string; active?: boolean}): Promise<ExtensionTab>;
     remove(tabIds: number | number[]): Promise<void>;
   };
-  scripting?: {
-    executeScript(injection: {
-      target: {
-        tabId: number;
-      };
-      func: (...args: any[]) => unknown;
-      args?: unknown[];
-    }): Promise<Array<{result: unknown}>>;
+  cookies?: {
+    getAll(details: {domain: string}): Promise<Array<{name: string; value: string}>>;
   };
   permissions?: {
     contains(details: PermissionDetails): Promise<boolean>;
@@ -96,11 +90,11 @@ function createChromeAdapter(chromeApi: any): BrowserApi {
         });
       },
     },
-    scripting: chromeApi.scripting
+    cookies: chromeApi.cookies
       ? {
-          executeScript(injection) {
-            return callbackToPromise<Array<{result: unknown}>>((resolve) => {
-              chromeApi.scripting.executeScript(injection, resolve);
+          getAll(details) {
+            return callbackToPromise<Array<{name: string; value: string}>>((resolve) => {
+              chromeApi.cookies.getAll(details, resolve);
             });
           },
         }
