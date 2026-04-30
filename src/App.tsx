@@ -6,8 +6,10 @@ import {
   Moon,
   Plus,
   RefreshCw,
+  Search,
   Sun,
   Upload,
+  X,
 } from 'lucide-react';
 import {
   createCustomAppsBackup,
@@ -30,6 +32,14 @@ import {browserApi, isFirefox} from '@/lib/webextension';
 import {DEFAULT_POPUP_STATE, type AppEntry, type GoogleAccountProfile, type PopupState} from '@/types/extension';
 
 const customColors = ['#ea4335', '#34a853', '#fbbc05', '#4285f4', '#ff6d00', '#00bfa5'];
+
+function matchesAppFilter(app: AppEntry, normalizedFilter: string) {
+  if (!normalizedFilter) {
+    return true;
+  }
+
+  return `${app.name} ${app.url}`.toLowerCase().includes(normalizedFilter);
+}
 
 function AccountAvatar({
   profile,
@@ -165,7 +175,7 @@ function AppSection({
   title: string;
   apps: AppEntry[];
   onAppOpen: (app: AppEntry) => void;
-  onCustomAppDelete?: (event: MouseEvent<HTMLButtonElement>, index: number) => void;
+  onCustomAppDelete?: (event: MouseEvent<HTMLButtonElement>, app: AppEntry) => void;
 }) {
   return (
     <section className="app-section">
@@ -185,7 +195,7 @@ function AppSection({
               onClick={() => onAppOpen(app)}
               onContextMenu={
                 app.isCustom && onCustomAppDelete
-                  ? (event) => onCustomAppDelete(event, index)
+                  ? (event) => onCustomAppDelete(event, app)
                   : undefined
               }
             >
@@ -217,6 +227,7 @@ export default function App() {
   const [customName, setCustomName] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [formError, setFormError] = useState('');
+  const [appFilter, setAppFilter] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [statusVariant, setStatusVariant] = useState<'default' | 'success' | 'error'>('default');
   const [isLoading, setIsLoading] = useState(true);
@@ -519,12 +530,12 @@ export default function App() {
 
   async function handleDeleteCustomApp(
     event: MouseEvent<HTMLButtonElement>,
-    index: number,
+    targetApp: AppEntry,
   ) {
     event.preventDefault();
 
-    const targetApp = popupState.customApps[index];
-    if (!targetApp) {
+    const targetIndex = popupState.customApps.indexOf(targetApp);
+    if (targetIndex === -1) {
       return;
     }
 
@@ -533,7 +544,7 @@ export default function App() {
     }
 
     const nextCustomApps = popupState.customApps.filter(
-      (_app, currentIndex) => currentIndex !== index,
+      (_app, currentIndex) => currentIndex !== targetIndex,
     );
 
     setPopupState((currentState) => ({
@@ -569,6 +580,15 @@ export default function App() {
     : popupState.accountsLastLoadedAt
       ? `Synced ${accountsLastLoadedLabel ?? 'recently'}. Load again to refresh account labels.`
       : 'Load Google account names and emails from your signed-in browser session.';
+  const normalizedAppFilter = appFilter.trim().toLowerCase();
+  const isFilteringApps = normalizedAppFilter.length > 0;
+  const filteredAiApps = aiApps.filter((app) => matchesAppFilter(app, normalizedAppFilter));
+  const filteredGeneralApps = generalApps.filter((app) => matchesAppFilter(app, normalizedAppFilter));
+  const filteredCustomApps = popupState.customApps.filter((app) =>
+    matchesAppFilter(app, normalizedAppFilter),
+  );
+  const filteredAppCount =
+    filteredAiApps.length + filteredGeneralApps.length + filteredCustomApps.length;
 
   return (
     <main className={`popup-shell${window.location.search.includes('tab=1') ? ' popup-shell-tab' : ''}`}>
@@ -707,22 +727,62 @@ export default function App() {
       </header>
 
       <div className="app-content">
+        <div className="app-filter-panel" role="search">
+          <div className="app-filter-control">
+            <Search size={15} className="app-filter-icon" aria-hidden="true" />
+            <input
+              type="search"
+              className="app-filter-input"
+              value={appFilter}
+              placeholder="Filter apps"
+              aria-label="Filter apps"
+              onChange={(event) => setAppFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setAppFilter('');
+                }
+              }}
+            />
+            {appFilter ? (
+              <button
+                type="button"
+                className="app-filter-clear"
+                aria-label="Clear app filter"
+                onClick={() => setAppFilter('')}
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         {isLoading ? <div className="status-line">Loading saved settings...</div> : null}
 
-        <AppSection title="AI Apps" apps={aiApps} onAppOpen={(app) => void handleOpenApp(app)} />
-        <AppSection
-          title="General"
-          apps={generalApps}
-          onAppOpen={(app) => void handleOpenApp(app)}
-        />
+        {filteredAiApps.length > 0 ? (
+          <AppSection title="AI Apps" apps={filteredAiApps} onAppOpen={(app) => void handleOpenApp(app)} />
+        ) : null}
 
-        {popupState.customApps.length > 0 ? (
+        {filteredGeneralApps.length > 0 ? (
+          <AppSection
+            title="General"
+            apps={filteredGeneralApps}
+            onAppOpen={(app) => void handleOpenApp(app)}
+          />
+        ) : null}
+
+        {filteredCustomApps.length > 0 ? (
           <AppSection
             title="Custom"
-            apps={popupState.customApps}
+            apps={filteredCustomApps}
             onAppOpen={(app) => void handleOpenApp(app)}
-            onCustomAppDelete={(event, index) => void handleDeleteCustomApp(event, index)}
+            onCustomAppDelete={(event, app) => void handleDeleteCustomApp(event, app)}
           />
+        ) : null}
+
+        {isFilteringApps && filteredAppCount === 0 ? (
+          <div className="empty-state" role="status">
+            No apps match "{appFilter.trim()}".
+          </div>
         ) : null}
       </div>
     </main>
