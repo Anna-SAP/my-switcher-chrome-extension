@@ -179,7 +179,9 @@ function AppSection({
 }) {
   return (
     <section className="app-section">
-      <div className="section-heading">{title}</div>
+      <div className="section-heading">
+        {title} ({apps.length})
+      </div>
       <div className="app-grid">
         {apps.map((app, index) => {
           const colorIndex = app.name.charCodeAt(0) % customColors.length;
