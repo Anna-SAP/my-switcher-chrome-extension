@@ -10,6 +10,13 @@
 
 > 🚀 One shared React/Vite popup codebase for Chrome MV3 and Firefox WebExtension builds.
 
+<p align="center">
+  <img src="docs/images/popup-snapshot.png" alt="My Switcher popup snapshot" width="440" />
+</p>
+<p align="center">
+  <sub>Popup snapshot · 插件弹窗快照</sub>
+</p>
+
 ```mermaid
 flowchart LR
   UI["🎛️ Shared popup UI"] --> Chrome["🟦 Chrome MV3"]
